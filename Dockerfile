@@ -1,33 +1,32 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1
+# force AMD64 so we can always pull the AMD64 Verifpal binary
+FROM --platform=linux/amd64 python:3.11-slim
 
-# Install system dependencies
+# Install system deps
 RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     git \
     pkg-config \
     libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/*
 
-# Install Rust (required for circomspect)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH="/root/.cargo/bin:${PATH}"
+# Fetch & install Verifpal v0.26.0 (AMD64)
+/usr/bin/curl -L \
+    https://github.com/symbolicsoft/verifpal/releases/download/v0.26.0/verifpal_linux_amd64 \
+  -o /usr/local/bin/verifpal \
+  && chmod +x /usr/local/bin/verifpal
 
-# Install circomspect
-RUN cargo install circomspect
-
-# Set working directory
+# Create app dir
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Your Flask app
 COPY app.py .
 
-# Expose port
+# Expose & run
 EXPOSE 5000
-
-# Run the application
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
