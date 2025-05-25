@@ -2,8 +2,6 @@ from flask import Flask, request, render_template_string, jsonify
 import subprocess
 import tempfile
 import os
-import requests
-import stat
 
 app = Flask(__name__)
 
@@ -237,30 +235,6 @@ component main = Multiplier2();"
 </html>
 '''
 
-def ensure_circomspect():
-    """Download circomspect if not available"""
-    circomspect_path = "/tmp/circomspect"
-    
-    if os.path.exists(circomspect_path):
-        return circomspect_path
-    
-    try:
-        print("Downloading circomspect...")
-        url = "https://github.com/trailofbits/circomspect/releases/latest/download/circomspect-linux"
-        response = requests.get(url, timeout=120)
-        response.raise_for_status()
-        
-        with open(circomspect_path, 'wb') as f:
-            f.write(response.content)
-        
-        os.chmod(circomspect_path, stat.S_IRWXU)
-        print("Circomspect downloaded successfully!")
-        return circomspect_path
-        
-    except Exception as e:
-        print(f"Failed to download circomspect: {e}")
-        return None
-
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE)
@@ -271,22 +245,14 @@ def audit():
         data = request.get_json()
         circom_code = data['code']
         
-        # Ensure circomspect is available
-        circomspect_path = ensure_circomspect()
-        if not circomspect_path:
-            return jsonify({
-                'success': False, 
-                'error': 'Failed to obtain circomspect binary'
-            })
-        
         # Create temp file
         with tempfile.NamedTemporaryFile(mode='w', suffix='.circom', delete=False) as f:
             f.write(circom_code)
             temp_path = f.name
         
-        # Run circomspect
+        # Run circomspect (it should be installed via cargo during Docker build)
         result = subprocess.run(
-            [circomspect_path, temp_path], 
+            ['circomspect', temp_path], 
             capture_output=True, 
             text=True, 
             timeout=60
@@ -302,6 +268,8 @@ def audit():
         
     except subprocess.TimeoutExpired:
         return jsonify({'success': False, 'error': 'Audit timed out after 60 seconds'})
+    except FileNotFoundError:
+        return jsonify({'success': False, 'error': 'circomspect not found. Installation may have failed.'})
     except Exception as e:
         return jsonify({'success': False, 'error': f'Error: {str(e)}'})
 
